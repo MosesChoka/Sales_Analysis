@@ -1,0 +1,361 @@
+---
+title: "BIS581"
+output: html_notebook
+---
+You have three data sets, one for the central region, one for eastern, and one for the western region.  You may need to edit the code below for the path to the files.
+
+```{r}
+library(tidyr)
+library(tidyverse)
+#load from CSV
+centralData <- read.csv("Orders_Central.csv", header=TRUE)
+View(centralData)
+westData <- read.csv("orders_west.csv", header=TRUE)
+View(westData)
+eastData <- read.delim("Orders_East.txt", header=TRUE, sep='\t')
+```
+For this project, answer the following questions, but please note: the data may or may not be setup such that you can just answer. You may need to perform some "data wrangling" before you can answer. Include the code you use for any wrangling/EDA in your submission.
+
+# DATA WRANGLING
+```{r}
+# Look at the structure of the three datasets
+# Central data
+dim(centralData)
+colnames(centralData)
+View(centralData)
+
+# West Data
+dim(westData)
+colnames(westData)
+
+# East Data
+dim(eastData)
+colnames(eastData)
+```
+
+```{r}
+# Remove duplicate values from the datasets
+centralData <- unique(centralData)
+westData <- unique(westData)
+eastData <- unique(eastData)
+
+# Check the resulting rows after removing duplicates
+dim(centralData)
+dim(westData)
+dim(eastData)
+
+```
+
+East data had some duplicate regions. The rows number drop from 2846 to 2807 after taking only unique values.
+
+```{r}
+# Further inspection on the datasets column (Making the data consistent)
+
+# A. Central Region
+colnames(centralData)
+
+# Create order date and ship date from the variables (Orde.Day, Order.Month ,...Ship.Day, Ship.Month, Ship.Year)
+
+centralData <- centralData %>%
+  unite("Order.Date", Order.Year, Order.Month, Order.Day, sep = "-")
+
+centralData <- centralData %>%
+  unite("Ship.Date", Ship.Year, Ship.Month, Ship.Day, sep = "-")
+
+View(centralData)
+class(centralData$Order.Date)
+
+# Convert the Order and Shipping Dates to Date variable
+centralData$Order.Date <- as.Date(centralData$Order.Date, format = "%Y-%m-%d")
+centralData$Ship.Date <- as.Date(centralData$Ship.Date, format = "%Y-%m-%d")
+class(centralData$Order.Date)
+
+# B. West Region
+# Remove the 0:00 from the order date and shipping date columns
+westData$Order.Date <- sub(" [0-9:]+$", "", westData$Order.Date)
+westData$Ship.Date <- sub(" [0-9:]+$", "", westData$Ship.Date)
+
+# Convert to the Ship  and Order Dates to date
+westData$Order.Date <- as.Date(westData$Order.Date, format = "%m/%d/%Y")
+westData$Ship.Date <- as.Date(westData$Ship.Date, format = "%m/%d/%Y")
+
+# C. East Region
+# Remove the 0:00 from the order date and shipping date columns
+eastData$Order.Date <- sub(" [0-9:]+$", "", eastData$Order.Date)
+eastData$Ship.Date <- sub(" [0-9:]+$", "", eastData$Ship.Date)
+
+# Convert to the Ship  and Order Dates to date
+eastData$Order.Date <- as.Date(eastData$Order.Date, format = "%m/%d/%Y")
+eastData$Ship.Date <- as.Date(eastData$Ship.Date, format = "%m/%d/%Y")
+
+```
+
+```{r}
+# Create a consistent column numbers with only useful columns
+ncol(centralData)
+#View(centralData)
+ncol(westData)
+#View west data
+ncol(eastData)
+#View east data
+
+# Add  Region column to central data
+centralData$Region <- "Central"
+
+# Rename the Products and Discounts so the column names is consistent all the regions
+centralData <- rename(centralData, Product.Name = Product)
+centralData <- rename(centralData, Discount = Discounts)
+ncol(centralData)
+
+# East Region has some inconsistency on the Sales column, we'll need to remove the USD to remain with the numeric values only
+eastData$Sales <- as.numeric(str_replace(eastData$Sales, "USD", ""))
+head(eastData$Sales,2)
+ncol(eastData)
+
+# Let's select the 21 variables in both east and central region to make up the west region data
+westData <- westData %>%
+  select(Row.ID, Order.ID, Customer.ID, Customer.Name, Segment,Country, City, Right_State2,
+         Postal.Code, Product.ID, Category, Sub.Category, Product.Name, Sales, Quantity, Profit,
+         Order.Date, Ship.Date, Ship.Mode, Discount, Region)
+westData <- rename(westData, State = Right_State2)
+
+# Save the new unique values for west data
+nrow(westData)
+westData <- unique(westData)
+
+dim(westData)
+```
+```{r}
+# Set a common top row index for all the datasets and merge the data ; we use the convention used for west data ,so we change only for east data and central data
+
+order_c <- c("Row.ID", "Order.ID", "Customer.ID", "Customer.Name", "Segment","Country", "City", "State","Postal.Code","Product.ID","Category","Sub.Category","Product.Name","Sales","Quantity", "Profit","Order.Date", "Ship.Date", "Ship.Mode", "Discount", "Region")
+
+centralData <- centralData[,order_c]
+eastData <- eastData[,order_c]
+
+
+# Merge the datasets
+merged_set <- rbind(centralData, eastData, westData)
+dim(merged_set)
+
+merged_set <- merged_set%>%
+  arrange(Row.ID)
+
+head(merged_set)
+View(merged_set)
+```
+
+
+```{r}
+#Check for missing values in our merged dataset
+any(is.na(merged_set))
+
+# Replace all the empty rows with 1
+merged_set <- merged_set[!apply(merged_set == '', 1, all),]
+
+# Count the missing values in each column
+colSums(is.na(merged_set))
+
+# Remove all the missing values
+merged_data <- na.omit(merged_set)
+colSums(is.na(merged_data))
+```
+
+###QUESTION ONE
+
+Which region on average, ships product faster ?
+
+```{r}
+# Average Days it take to ship
+
+shipping_days <- merged_data %>%
+  group_by(Region)%>%
+  summarize(shipping_time = mean(Ship.Date - Order.Date))
+
+shipping_days
+
+
+```
+
+Solution : On average East Region ships products faster (3.913 days on average)
+
+# QUESTION TWO
+
+Which products ship slowest by region ?
+
+```{r}
+product_shipment <- merged_data %>% 
+  group_by(Region,Product.Name) %>% 
+  summarize(avg_shipment_days = mean(Ship.Date-Order.Date))
+
+# Central Region
+central_slowest_shipping_products <- product_shipment %>%
+  select(Product.Name,avg_shipment_days) %>%
+  filter(Region == 'Central') %>%
+  arrange(desc(avg_shipment_days))
+
+head(central_slowest_shipping_products, 10)
+
+# West Region
+west_slowest_shipping_products <- product_shipment %>%
+  select(Product.Name,avg_shipment_days) %>%
+  filter(Region == 'West') %>%
+  arrange(desc(avg_shipment_days))
+
+head(west_slowest_shipping_products, 10)
+
+
+# East Region
+east_slowest_shipping_products <- product_shipment %>%
+  select(Product.Name,avg_shipment_days) %>%
+  filter(Region == 'East') %>%
+  arrange(desc(avg_shipment_days))
+
+head(east_slowest_shipping_products, 10)
+
+
+
+```
+
+# QUESTION 3
+
+Plot time to ship by category, by year.
+
+
+```{r}
+merged_data$date_diff <- difftime(merged_data$Ship.Date, merged_data$Order.Date, units = "days")
+merged_data$date_diff <- as.numeric(merged_data$date_diff)
+merged_data <- merged_data[complete.cases(merged_data[, c('Category','date_diff')]),]
+
+merged_data$Year <- format(merged_data$Ship.Date, format = "%Y")
+
+ggplot(merged_data, aes(date_diff, Category, fill = Year)) + geom_boxplot() +
+  stat_summary(fun = mean, geom = "point", col = "blue") + scale_fill_brewer(palette = "Dark5") +
+  labs(x = "Days", y = "Category", title = "Time to ship by Category, and Year",
+       subtitle = "(2015-2020)")
+
+```
+
+# QUESTION 4:
+
+Which categories have highest profit by region, chain-wide?
+
+```{r}
+profit_by_category_region <- merged_data %>%
+  select(Category, Profit, Region) %>%
+  group_by(Region) %>%
+  slice(which.max(Profit))
+
+profit_by_category_region
+```
+Solution: Technology category has the highest profit in all the regions. Central region recorded the highest profit for Technology category (8399.976 dollars).
+
+# GRADS QUIZZES
+
+## QUESTION ONE
+
+Which segments have the lowest profit by region?
+
+```{r}
+lowest_profit_segments_region <-  merged_data %>%
+  select(Segment, Profit, Region) %>%
+  group_by(Region) %>%
+  slice(which.min(Profit))
+
+lowest_profit_segments_region
+
+```
+Solution: In Central and East region, the consumer segment recorded the lowest profits (they experienced losses, indicated with negative profits), Central region made a loss of 3701.893 dollars, and East region made a loss of 6599.978 dollars. In West region, home office segment made a loss of 3399.980 dollars. 
+
+## QUESTION TWO
+What are yearly sales by region?
+
+```{r}
+Sales_2015 <- merged_data %>%
+  select(Region, Sales, Year) %>%
+  group_by(Region) %>%
+  filter(Year == 2015) %>%
+  summarise(yearly_sales = sum(Sales))
+
+Sales_2015
+
+
+
+Sales_2016 <- merged_data %>%
+  select(Region, Sales, Year) %>%
+  group_by(Region) %>%
+  filter(Year == 2016) %>%
+  summarise(yearly_sales = sum(Sales))
+
+Sales_2016
+
+Sales_2017 <- merged_data %>%
+  select(Region, Sales, Year) %>%
+  group_by(Region) %>%
+  filter(Year == 2017) %>%
+  summarise(yearly_sales = sum(Sales))
+
+Sales_2017
+
+Sales_2018 <- merged_data %>%
+  select(Region, Sales, Year) %>%
+  group_by(Region) %>%
+  filter(Year == 2018) %>%
+  summarise(yearly_sales = sum(Sales))
+
+Sales_2018
+
+Sales_2019 <- merged_data %>%
+  select(Region, Sales, Year) %>%
+  group_by(Region) %>%
+  filter(Year == 2019) %>%
+  summarise(yearly_sales = sum(Sales))
+
+Sales_2019
+
+```
+
+Solution: In 2015 Central, East, and West regions made a total yearly sales of  102899.9 dollars	, 119404.6 dollars, and 144206.3 dollars respectively.
+
+In 2016 Central, East, and West regions made a total yearly sales of  103222.6 dollars	, 159537.1 dollars, and 139903.7 dollars respectively.
+
+In 2017 Central, East, and West regions made a total yearly sales of  147071.4 dollars	, 175549.9	 dollars, and 190144.1 dollars respectively.
+
+In 2018 Central, East, and West regions made a total yearly sales of  147145.7 dollars	, 210959.9	 dollars, and 249425.2 dollars respectively.
+
+In 2019 Central, East, and West regions made a total yearly sales of  900.3248 dollars	, 601.3500	 dollars, and 1778.5420	 dollars respectively.
+
+
+
+
+# QUESTION THREE
+
+Which customer purchased the most (by dollar amount, in a single order) by region and what did they buy?  (show the answer for each region and then show which customer made the biggest purchase overall)
+
+```{r}
+# 
+region_most_purchases <- merged_data %>%
+  select(Order.ID, Customer.Name, Product.Name, Region, Sales) %>%
+  group_by(Region) %>%
+  filter(Sales == max(Sales))
+
+region_most_purchases
+
+overall_high_purchase <- merged_data %>%
+  select(Order.ID, Customer.Name, Product.Name, Region, Sales) %>%
+  filter(Sales == max(Sales))
+
+overall_high_purchase
+```
+
+In East Region Tom Ashbrook made the highest purchase, he purchased a Canon imageCLASS 2200 Advanced Copier 11199.96 dollars
+
+In Central Region Tamara Chand made the highest purchase, he purchased a Canon imageCLASS 2200 Advanced Copierc 17499.95 dollars
+
+In West Region Jonas Herbst made the highest purchase, he purchased a Canon imageCLASS 2200 Advanced Copier, worth 13999.96 dollars
+
+Tamara Chand made the most purchase overally.
+
+
+
+

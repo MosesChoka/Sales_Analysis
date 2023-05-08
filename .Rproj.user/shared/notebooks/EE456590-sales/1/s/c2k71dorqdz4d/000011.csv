@@ -1,0 +1,6 @@
+"0","lowest_profit_segments_region <-  merged_data %>%"
+"0","  select(Segment, Profit, Region) %>%"
+"0","  group_by(Region) %>%"
+"0","  slice(which.min(Profit))"
+"0",""
+"0","lowest_profit_segments_region"

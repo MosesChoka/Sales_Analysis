@@ -1,0 +1,8 @@
+"0","east_slowest_shipping_products <- product_shipment %>%
+  select(Product.Name,avg_shipment_days) %>%
+  filter(Region == 'East') %>%
+  arrange(desc(avg_shipment_days))
+"
+"2","Adding missing grouping variables: `Region`"
+"0",""
+"0","head(east_slowest_shipping_products, 10)"

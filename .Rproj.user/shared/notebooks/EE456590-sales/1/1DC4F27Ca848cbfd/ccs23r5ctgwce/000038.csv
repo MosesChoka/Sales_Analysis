@@ -1,0 +1,8 @@
+"0","# Create a new column for year"
+"0","# Group data by category and year, and calculate mean time_diff for each group"
+"0","plotdata <- eastData %>%"
+"0","  mutate(year = lubridate::year(order_date)) %>%"
+"0","  group_by(Category, year) %>%"
+"0","  summarize(mean_time_diff = mean(date_diff))"
+"2","`summarise()` has grouped output by 'Category'. You can override using the `.groups` argument."
+"0","head(plotdata)"
